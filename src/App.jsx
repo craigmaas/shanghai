@@ -72,6 +72,25 @@ function App() {
   const docRef = useRef(new Y.Doc());
   const providerRef = useRef(null);
 
+  const normalizeHand = (value) => {
+    if (value instanceof Y.Array) {
+      return value.toArray();
+    }
+    return Array.isArray(value) ? value : [];
+  };
+
+  const getPlayerHand = (name) => {
+    const hands = docRef.current.getMap('hands');
+    return normalizeHand(hands.get(name));
+  };
+
+  const setPlayerHand = (name, cards) => {
+    const hands = docRef.current.getMap('hands');
+    const hand = new Y.Array();
+    hand.insert(0, cards);
+    hands.set(name, hand);
+  };
+
     const deck = useMemo(() => docRef.current.getArray('deck'), []);
   const discard = useMemo(() => docRef.current.getArray('discard'), []);
   const table = useMemo(() => docRef.current.getArray('table'), []);
@@ -128,21 +147,6 @@ function App() {
     });
     sessionStorage.removeItem(playerStorageKey);
     setCurrentPlayer('');
-  };
-
-  const normalizeHand = (value) => {
-    if (value instanceof Y.Array) {
-      return value.toArray();
-    }
-    return Array.isArray(value) ? value : [];
-  };
-
-  const getPlayerHand = (name) => normalizeHand(hands.get(name));
-
-  const setPlayerHand = (name, cards) => {
-    const hand = new Y.Array();
-    hand.insert(0, cards);
-    hands.set(name, hand);
   };
 
   const drawCard = (name) => {
