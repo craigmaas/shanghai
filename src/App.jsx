@@ -224,7 +224,11 @@ function App() {
 
   useEffect(() => {
     const provider = new WebrtcProvider('shanghai-cardgame-room', docRef.current, {
-      signaling: ['wss://signaling.yjs.dev']
+      signaling: [
+        'wss://signaling.yjs.dev',
+        'wss://y-webrtc-signaling-eu.herokuapp.com',
+        'wss://y-webrtc-signaling-us.herokuapp.com'
+      ]
     });
     providerRef.current = provider;
 
@@ -247,7 +251,12 @@ function App() {
     initializeState();
 
     provider.on('status', ({ status }) => {
+      console.log('WebRTC status:', status);
       setStatusMessage(status === 'connected' ? 'Connected' : 'Offline');
+    });
+
+    provider.on('peers', ({ webrtcPeers }) => {
+      console.log('Connected peers:', webrtcPeers);
     });
 
     provider.on('synced', () => {
