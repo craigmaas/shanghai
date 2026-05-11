@@ -6,6 +6,13 @@ const playerNames = ['June', 'Jan', 'Dorothy'];
 const sessionIdKey = 'shanghai-session-id';
 const playerStorageKey = 'shanghai-player-name';
 
+const suitCodes = {
+  '♠': 'S',
+  '♥': 'H',
+  '♦': 'D',
+  '♣': 'C'
+};
+
 function generateFullDeck() {
   const suits = ['♠', '♥', '♦', '♣'];
   const ranks = ['A', '2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K'];
@@ -39,6 +46,16 @@ function shuffle(array) {
 
 function createCardLabel(card) {
   return card.type === 'joker' ? 'Joker' : `${card.rank}${card.suit}`;
+}
+
+function getCardImageUrl(card) {
+  if (card.type === 'joker') {
+    return 'https://upload.wikimedia.org/wikipedia/commons/6/6d/Joker_black.svg';
+  }
+
+  const rankCode = card.rank === '10' ? '0' : card.rank;
+  const suitCode = suitCodes[card.suit];
+  return `https://deckofcardsapi.com/static/img/${rankCode}${suitCode}.png`;
 }
 
 function App() {
@@ -203,6 +220,16 @@ function App() {
     seats.observe(observer);
     meta.observe(observer);
 
+    const initializeState = () => {
+      if (!meta.get('initialized')) {
+        initGameState();
+        validateSelection();
+        refresh();
+      }
+    };
+
+    initializeState();
+
     provider.on('status', ({ status }) => {
       setStatusMessage(status === 'connected' ? 'Connected' : 'Offline');
     });
@@ -322,7 +349,11 @@ function App() {
 
             <div className="stack-card discard-stack">
               <div className="stack-title">Discard</div>
-              <div className="discard-preview">{discardTop ? createCardLabel(discardTop) : 'Empty'}</div>
+              <div className="discard-preview">
+                {discardTop ? (
+                  <img className="card-image-sm" src={getCardImageUrl(discardTop)} alt={createCardLabel(discardTop)} />
+                ) : 'Empty'}
+              </div>
               <div className="stack-count">{discard.length}</div>
             </div>
           </div>
@@ -337,7 +368,9 @@ function App() {
               <div className="empty-table">Drag cards here to play them face up.</div>
             ) : (
               tableCards.map((card) => (
-                <div key={card.id} className="card tile-card">{createCardLabel(card)}</div>
+                <div key={card.id} className="card tile-card">
+                  <img className="card-image" src={getCardImageUrl(card)} alt={createCardLabel(card)} />
+                </div>
               ))
             )}
           </div>
@@ -354,7 +387,7 @@ function App() {
             <button key={card.id} type="button" className="card hand-card" draggable onDragStart={(event) => {
               event.dataTransfer.setData('application/json', JSON.stringify({ type: 'play', cardId: card.id }));
             }} onClick={() => playCard(card.id, currentPlayer)}>
-              {createCardLabel(card)}
+              <img className="card-image" src={getCardImageUrl(card)} alt={createCardLabel(card)} />
             </button>
           )) : <div className="empty-hand">Select a player to see your hand.</div>}
         </div>

@@ -221,6 +221,41 @@ button {
   background: rgba(30, 41, 59, 0.96);
   color: var(--text);
   border: 1px solid rgba(148, 163, 184, 0.14);
+  position: relative;
+  overflow: hidden;
+}
+
+.deck-stack {
+  background-image: url('https://deckofcardsapi.com/static/img/back.png');
+  background-size: cover;
+  background-position: center;
+}
+
+.deck-stack .stack-title,
+.deck-stack .stack-label {
+  position: relative;
+  z-index: 1;
+}
+
+.deck-stack .stack-count {
+  position: absolute;
+  bottom: 16px;
+  right: 16px;
+  background: rgba(15, 23, 42, 0.85);
+  border-radius: 999px;
+  padding: 8px 12px;
+  color: #fff;
+  font-size: 1rem;
+}
+
+.discard-preview {
+  min-height: 110px;
+  display: grid;
+  place-items: center;
+  padding: 14px 18px;
+  border-radius: 18px;
+  background: rgba(15, 23, 42, 0.9);
+  width: 100%;
 }
 
 .stack-title {
@@ -266,7 +301,7 @@ button {
 
 .card {
   border-radius: 18px;
-  padding: 16px;
+  padding: 0;
   background: #f8fafc;
   color: #0f172a;
   box-shadow: var(--shadow);
@@ -275,20 +310,46 @@ button {
   display: grid;
   place-items: center;
   text-align: center;
+  overflow: hidden;
+}
+
+.card img,
+.discard-preview img {
+  width: 100%;
+  height: auto;
+  display: block;
+  border-radius: 16px;
+}
+
+.card-image {
+  width: 100%;
+  aspect-ratio: 0.7;
+  object-fit: contain;
+}
+
+.card-image-sm {
+  width: 72px;
+  aspect-ratio: 0.7;
+  object-fit: contain;
 }
 
 .tile-card {
   cursor: default;
-  background: linear-gradient(180deg, #e2e8f0 0%, #cbd5e1 100%);
+  background: transparent;
+  box-shadow: none;
+  border: none;
 }
 
 .hand-card {
   transition: transform 120ms ease, box-shadow 120ms ease;
+  cursor: grab;
+  background: transparent;
+  border: 1px solid rgba(148, 163, 184, 0.18);
 }
 
 .hand-card:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 28px 72px rgba(0, 0, 0, 0.2);
+  transform: translateY(-4px);
+  box-shadow: 0 32px 84px rgba(0, 0, 0, 0.24);
 }
 
 .hand-panel {
