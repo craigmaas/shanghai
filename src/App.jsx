@@ -72,7 +72,7 @@ function App() {
   const docRef = useRef(new Y.Doc());
   const providerRef = useRef(null);
 
-  const deck = useMemo(() => docRef.current.getArray('deck'), []);
+    const deck = useMemo(() => docRef.current.getArray('deck'), []);
   const discard = useMemo(() => docRef.current.getArray('discard'), []);
   const table = useMemo(() => docRef.current.getArray('table'), []);
   const hands = useMemo(() => docRef.current.getMap('hands'), []);
@@ -80,7 +80,7 @@ function App() {
   const meta = useMemo(() => docRef.current.getMap('meta'), []);
 
   const isSelected = Boolean(currentPlayer);
-  const currentHand = currentPlayer ? hands.get(currentPlayer) ?? [] : [];
+  const currentHand = currentPlayer ? getPlayerHand(currentPlayer) : [];
   const deckCount = deck.length;
   const discardTop = discard.length ? discard.get(0) : null;
   const tableCards = table.toArray();
@@ -100,7 +100,7 @@ function App() {
       deck.insert(0, cards);
       discard.delete(0, discard.length);
       table.delete(0, table.length);
-      playerNames.forEach((name) => hands.set(name, []));
+      playerNames.forEach((name) => setPlayerHand(name, []));
       seats.clear();
       meta.set('initialized', true);
     });
@@ -130,8 +130,20 @@ function App() {
     setCurrentPlayer('');
   };
 
-  const getPlayerHand = (name) => hands.get(name) ?? [];
-  const setPlayerHand = (name, cards) => hands.set(name, cards);
+  const normalizeHand = (value) => {
+    if (value instanceof Y.Array) {
+      return value.toArray();
+    }
+    return Array.isArray(value) ? value : [];
+  };
+
+  const getPlayerHand = (name) => normalizeHand(hands.get(name));
+
+  const setPlayerHand = (name, cards) => {
+    const hand = new Y.Array();
+    hand.insert(0, cards);
+    hands.set(name, hand);
+  };
 
   const drawCard = (name) => {
     if (!name || deck.length === 0) return;
@@ -223,9 +235,9 @@ function App() {
     const initializeState = () => {
       if (!meta.get('initialized')) {
         initGameState();
-        validateSelection();
-        refresh();
       }
+      validateSelection();
+      refresh();
     };
 
     initializeState();
