@@ -235,16 +235,27 @@ function App() {
     <div className="app-shell">
       <div className={`player-modal ${isSelected ? 'hidden' : ''}`}>
         <div className="player-modal-card">
-          <h1>Choose your player</h1>
-          <p>Select June, Jan or Dorothy to take a seat.</p>
+          <h1>Choose a seat</h1>
+          <p>Tap an open seat to join as June, Jan, or Dorothy.</p>
           <div className="player-grid">
-            {playerNames.map((name) => (
-              <button key={name} type="button" onClick={() => setPlayerSeat(name)}>
-                {name}
-              </button>
-            ))}
+            {seatStates.map(({ name, occupant }) => {
+              const isMine = occupant === sessionId;
+              const isTaken = occupant && occupant !== sessionId;
+              return (
+                <button
+                  key={name}
+                  type="button"
+                  className={isTaken ? 'disabled-seat' : ''}
+                  onClick={() => !isTaken && setPlayerSeat(name)}
+                  disabled={isTaken}
+                >
+                  <span>{name}</span>
+                  <small>{isMine ? 'Your seat' : isTaken ? 'Taken' : 'Available'}</small>
+                </button>
+              );
+            })}
           </div>
-          <p className="modal-note">Sit down and join the shared table instantly.</p>
+          <p className="modal-note">The first browser to claim a seat gets control for that player.</p>
         </div>
       </div>
 
@@ -254,25 +265,44 @@ function App() {
           <div className="status-text">{statusMessage}</div>
         </div>
         <div className="player-chip">
-          {currentPlayer ? `You are ${currentPlayer}` : 'No player selected'}
+          {currentPlayer ? (
+            <div className="player-chip-row">
+              <span>{`You are ${currentPlayer}`}</span>
+              <button type="button" className="leave-seat" onClick={() => removePlayerSeat(currentPlayer)}>
+                Leave
+              </button>
+            </div>
+          ) : 'No player selected'}
         </div>
       </header>
 
       <main className="board-grid">
-        <section className="seat-card left-seat">
-          <div className="seat-title">June</div>
-          <div className="seat-body">{seatStates[0].occupant ? (seatStates[0].occupant === sessionId ? 'You are here' : 'Occupied') : 'Empty'}</div>
-        </section>
-
-        <section className="seat-card top-seat">
-          <div className="seat-title">Jan</div>
-          <div className="seat-body">{seatStates[1].occupant ? (seatStates[1].occupant === sessionId ? 'You are here' : 'Occupied') : 'Empty'}</div>
-        </section>
-
-        <section className="seat-card right-seat">
-          <div className="seat-title">Dorothy</div>
-          <div className="seat-body">{seatStates[2].occupant ? (seatStates[2].occupant === sessionId ? 'You are here' : 'Occupied') : 'Empty'}</div>
-        </section>
+        {seatStates.map(({ name, occupant }, index) => {
+          const isMine = occupant === sessionId;
+          const isTaken = occupant && !isMine;
+          return (
+            <section
+              key={name}
+              className={`seat-card ${isMine ? 'current-seat' : isTaken ? 'occupied-seat' : 'open-seat'}`}
+            >
+              <div className="seat-title">{name}</div>
+              <div className="seat-body">
+                {isMine ? 'You are here' : isTaken ? 'Occupied' : 'Empty'}
+              </div>
+              <div className="seat-actions">
+                {!isTaken ? (
+                  isMine ? (
+                    <button type="button" onClick={() => removePlayerSeat(name)}>Leave</button>
+                  ) : (
+                    <button type="button" onClick={() => setPlayerSeat(name)}>Sit here</button>
+                  )
+                ) : (
+                  <div className="seat-label-small">Locked</div>
+                )}
+              </div>
+            </section>
+          );
+        })}
 
         <section className="table-panel">
           <div className="panel-header">
