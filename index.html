@@ -1,78 +1,12 @@
 <!DOCTYPE html>
 <html lang="en">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Shanghai Multiplayer Card Game</title>
-  <link rel="stylesheet" href="style.css" />
-</head>
-<body>
-  <div id="player-select" class="overlay">
-    <div class="select-card">
-      <h1>Choose your player</h1>
-      <p>June, Jan, or Dorothy</p>
-      <div class="player-buttons"></div>
-      <p class="hint">Sit in the seat and join the shared game.</p>
-    </div>
-  </div>
-
-  <div class="game-shell">
-    <section class="status-bar">
-      <div class="status-line">
-        <span id="room-name">Room: shanghai-cardgame</span>
-        <span id="player-label"></span>
-      </div>
-      <div class="controls">
-        <button id="recall">Recall / Shuffle</button>
-        <button id="deal">Deal 11 cards</button>
-      </div>
-    </section>
-
-    <div class="arena">
-      <div class="seat left-seat">
-        <div class="seat-label">June</div>
-        <div class="seat-status" id="seat-June"></div>
-      </div>
-
-      <div class="seat top-seat">
-        <div class="seat-label">Jan</div>
-        <div class="seat-status" id="seat-Jan"></div>
-      </div>
-
-      <div class="seat right-seat">
-        <div class="seat-label">Dorothy</div>
-        <div class="seat-status" id="seat-Dorothy"></div>
-      </div>
-
-      <div class="board">
-        <div class="deck-zone" id="deck-zone" draggable="true">
-          <div class="deck-count"><span id="deck-count">0</span></div>
-          <div class="deck-card">Deck</div>
-          <div class="deck-hint">Drag to hand or click to draw</div>
-        </div>
-
-        <div class="discard-zone" id="discard-zone">
-          <div class="discard-label">Discard</div>
-          <div class="discard-card" id="discard-card">Empty</div>
-          <div class="discard-count"><span id="discard-count">0</span></div>
-        </div>
-
-        <div class="table-zone" id="table-zone">
-          <div class="table-label">Table</div>
-          <div class="table-cards" id="table-cards"></div>
-        </div>
-      </div>
-    </div>
-
-    <section class="hand-panel">
-      <div class="hand-header">
-        <div>Your hand</div>
-        <div class="hand-help">Drag a card to the table to play it.</div>
-      </div>
-      <div class="hand-cards" id="hand-cards"></div>
-    </section>
-  </div>
-
-  <script type="module" src="script.js"></script>
-</body>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Shanghai Multiplayer Card Game</title>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.jsx"></script>
+  </body>
 </html>
