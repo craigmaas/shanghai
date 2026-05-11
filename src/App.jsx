@@ -302,6 +302,20 @@ function App() {
         <div>
           <div className="room-name">Shanghai Card Room</div>
           <div className="status-text">{statusMessage}</div>
+          <div className="player-list">
+            <span className="player-list-label">Connected:</span>
+            {seatStates.filter(({ occupant }) => occupant).map(({ name, occupant }) => (
+              <span
+                key={name}
+                className={`player-badge ${occupant === sessionId ? 'current-player-badge' : ''}`}
+              >
+                {name}{occupant === sessionId ? ' (You)' : ''}
+              </span>
+            ))}
+            {seatStates.every(({ occupant }) => !occupant) && (
+              <span className="player-badge empty-player-badge">None</span>
+            )}
+          </div>
         </div>
         <div className="player-chip">
           {currentPlayer ? (

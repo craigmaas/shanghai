@@ -65,6 +65,42 @@ button {
   color: var(--muted);
 }
 
+.player-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  margin-top: 10px;
+}
+
+.player-list-label {
+  font-size: 0.9rem;
+  color: var(--muted);
+}
+
+.player-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  border-radius: 999px;
+  font-size: 0.92rem;
+  background: rgba(56, 189, 248, 0.16);
+  border: 1px solid rgba(56, 189, 248, 0.24);
+  color: var(--text);
+}
+
+.current-player-badge {
+  background: rgba(16, 185, 129, 0.18);
+  border-color: rgba(16, 185, 129, 0.3);
+}
+
+.empty-player-badge {
+  background: rgba(148, 163, 184, 0.16);
+  border-color: rgba(148, 163, 184, 0.28);
+  color: var(--muted);
+}
+
 .player-chip {
   padding: 10px 16px;
   border-radius: 999px;
