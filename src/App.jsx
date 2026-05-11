@@ -1,10 +1,21 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import * as Y from 'yjs';
-import { WebrtcProvider } from 'y-webrtc';
+import { initializeApp } from 'firebase/app';
+import { getDatabase, ref, onValue, set, update, onDisconnect, off } from 'firebase/database';
 
 const playerNames = ['June', 'Jan', 'Dorothy'];
 const sessionIdKey = 'shanghai-session-id';
 const playerStorageKey = 'shanghai-player-name';
+
+// Firebase configuration - REPLACE WITH YOUR OWN FIREBASE CONFIG
+const firebaseConfig = {
+  apiKey: "your-api-key",
+  authDomain: "your-project.firebaseapp.com",
+  databaseURL: "https://your-project-default-rtdb.firebaseio.com",
+  projectId: "your-project",
+  storageBucket: "your-project.appspot.com",
+  messagingSenderId: "123456789",
+  appId: "your-app-id"
+};
 
 const suitCodes = {
   '♠': 'S',
@@ -69,149 +80,145 @@ function App() {
   const [currentPlayer, setCurrentPlayer] = useState(() => sessionStorage.getItem(playerStorageKey) ?? '');
   const [statusMessage, setStatusMessage] = useState('Connecting…');
   const [renderCounter, setRenderCounter] = useState(0);
-  const docRef = useRef(new Y.Doc());
-  const providerRef = useRef(null);
-
-  const normalizeHand = (value) => {
-    if (value instanceof Y.Array) {
-      return value.toArray();
-    }
-    return Array.isArray(value) ? value : [];
-  };
-
-  const getPlayerHand = (name) => {
-    const hands = docRef.current.getMap('hands');
-    return normalizeHand(hands.get(name));
-  };
-
-  const setPlayerHand = (name, cards) => {
-    const hands = docRef.current.getMap('hands');
-    const hand = new Y.Array();
-    hand.insert(0, cards);
-    hands.set(name, hand);
-  };
-
-    const deck = useMemo(() => docRef.current.getArray('deck'), []);
-  const discard = useMemo(() => docRef.current.getArray('discard'), []);
-  const table = useMemo(() => docRef.current.getArray('table'), []);
-  const hands = useMemo(() => docRef.current.getMap('hands'), []);
-  const seats = useMemo(() => docRef.current.getMap('seats'), []);
-  const meta = useMemo(() => docRef.current.getMap('meta'), []);
-
-  const isSelected = Boolean(currentPlayer);
-  const currentHand = currentPlayer ? getPlayerHand(currentPlayer) : [];
-  const deckCount = deck.length;
-  const discardTop = discard.length ? discard.get(0) : null;
-  const tableCards = table.toArray();
-
-  const seatStates = playerNames.map((name) => ({
-    name,
-    occupant: seats.get(name)
-  }));
+  const firebaseRef = useRef(null);
+  const gameStateRef = useRef({
+    deck: [],
+    discard: [],
+    table: [],
+    hands: { June: [], Jan: [], Dorothy: [] },
+    seats: {},
+    meta: { initialized: false }
+  });
 
   const refresh = () => setRenderCounter((value) => value + 1);
 
+  const isSelected = Boolean(currentPlayer);
+  const currentHand = currentPlayer ? gameStateRef.current.hands[currentPlayer] || [] : [];
+  const deckCount = gameStateRef.current.deck.length;
+  const discardTop = gameStateRef.current.discard.length ? gameStateRef.current.discard[0] : null;
+  const tableCards = gameStateRef.current.table;
+
+  const seatStates = playerNames.map((name) => ({
+    name,
+    occupant: gameStateRef.current.seats[name]
+  }));
+
+  const updateGameState = (updates) => {
+    const newState = { ...gameStateRef.current, ...updates };
+    gameStateRef.current = newState;
+    if (firebaseRef.current) {
+      update(firebaseRef.current, newState);
+    }
+    refresh();
+  };
+
   const initGameState = () => {
-    if (meta.get('initialized')) return;
+    if (gameStateRef.current.meta.initialized) return;
     const cards = shuffle(generateFullDeck());
-    docRef.current.transact(() => {
-      deck.delete(0, deck.length);
-      deck.insert(0, cards);
-      discard.delete(0, discard.length);
-      table.delete(0, table.length);
-      playerNames.forEach((name) => setPlayerHand(name, []));
-      seats.clear();
-      meta.set('initialized', true);
+    updateGameState({
+      deck: cards,
+      discard: [],
+      table: [],
+      hands: { June: [], Jan: [], Dorothy: [] },
+      seats: {},
+      meta: { initialized: true }
     });
   };
 
   const setPlayerSeat = (name) => {
-    const occupant = seats.get(name);
+    const occupant = gameStateRef.current.seats[name];
     if (occupant && occupant !== sessionId) {
       window.alert(`${name} is already taken.`);
       return;
     }
-    docRef.current.transact(() => {
-      seats.set(name, sessionId);
-    });
+    const newSeats = { ...gameStateRef.current.seats, [name]: sessionId };
+    updateGameState({ seats: newSeats });
     sessionStorage.setItem(playerStorageKey, name);
     setCurrentPlayer(name);
-    refresh();
   };
 
   const removePlayerSeat = (name) => {
     if (!name) return;
-    if (seats.get(name) !== sessionId) return;
-    docRef.current.transact(() => {
-      seats.delete(name);
-    });
+    if (gameStateRef.current.seats[name] !== sessionId) return;
+    const newSeats = { ...gameStateRef.current.seats };
+    delete newSeats[name];
+    updateGameState({ seats: newSeats });
     sessionStorage.removeItem(playerStorageKey);
     setCurrentPlayer('');
   };
 
   const drawCard = (name) => {
-    if (!name || deck.length === 0) return;
-    const card = deck.get(0);
-    docRef.current.transact(() => {
-      deck.delete(0, 1);
-      setPlayerHand(name, [...getPlayerHand(name), card]);
-    });
+    if (!name || gameStateRef.current.deck.length === 0) return;
+    const card = gameStateRef.current.deck[0];
+    const newDeck = gameStateRef.current.deck.slice(1);
+    const newHands = {
+      ...gameStateRef.current.hands,
+      [name]: [...gameStateRef.current.hands[name], card]
+    };
+    updateGameState({ deck: newDeck, hands: newHands });
   };
 
   const playCard = (cardId, player) => {
     if (!player || player !== currentPlayer) return;
-    const hand = getPlayerHand(player);
+    const hand = gameStateRef.current.hands[player] || [];
     const index = hand.findIndex((card) => card.id === cardId);
     if (index < 0) return;
     const [card] = hand.splice(index, 1);
-    docRef.current.transact(() => {
-      setPlayerHand(player, [...hand]);
-      table.push([card]);
-      discard.delete(0, discard.length);
-      discard.insert(0, [card]);
+    const newHands = { ...gameStateRef.current.hands, [player]: [...hand] };
+    const newTable = [...gameStateRef.current.table, card];
+    const newDiscard = [card];
+    updateGameState({
+      hands: newHands,
+      table: newTable,
+      discard: newDiscard
     });
   };
 
   const recallAndShuffle = () => {
     const allCards = [];
-    allCards.push(...deck.toArray());
-    allCards.push(...discard.toArray());
-    allCards.push(...table.toArray());
-    playerNames.forEach((name) => allCards.push(...getPlayerHand(name)));
+    allCards.push(...gameStateRef.current.deck);
+    allCards.push(...gameStateRef.current.discard);
+    allCards.push(...gameStateRef.current.table);
+    playerNames.forEach((name) => allCards.push(...gameStateRef.current.hands[name]));
     shuffle(allCards);
 
-    docRef.current.transact(() => {
-      deck.delete(0, deck.length);
-      deck.insert(0, allCards);
-      discard.delete(0, discard.length);
-      table.delete(0, table.length);
-      playerNames.forEach((name) => setPlayerHand(name, []));
+    updateGameState({
+      deck: allCards,
+      discard: [],
+      table: [],
+      hands: { June: [], Jan: [], Dorothy: [] }
     });
   };
 
   const dealCards = () => {
-    if (deck.length < 33) {
+    if (gameStateRef.current.deck.length < 33) {
       window.alert('Not enough cards in the deck. Recall and shuffle first.');
       return;
     }
-    docRef.current.transact(() => {
-      table.delete(0, table.length);
-      discard.delete(0, discard.length);
-      playerNames.forEach((name) => setPlayerHand(name, []));
-      for (let round = 0; round < 11; round += 1) {
-        playerNames.forEach((name) => {
-          if (deck.length === 0) return;
-          const card = deck.get(0);
-          deck.delete(0, 1);
-          setPlayerHand(name, [...getPlayerHand(name), card]);
-        });
-      }
+    let newDeck = [...gameStateRef.current.deck];
+    const newHands = { June: [], Jan: [], Dorothy: [] };
+    const newTable = [];
+    const newDiscard = [];
+
+    for (let round = 0; round < 11; round += 1) {
+      playerNames.forEach((name) => {
+        if (newDeck.length === 0) return;
+        const card = newDeck.shift();
+        newHands[name].push(card);
+      });
+    }
+
+    updateGameState({
+      deck: newDeck,
+      hands: newHands,
+      table: newTable,
+      discard: newDiscard
     });
   };
 
   const validateSelection = () => {
     if (!currentPlayer) return;
-    const occupant = seats.get(currentPlayer);
+    const occupant = gameStateRef.current.seats[currentPlayer];
     if (occupant && occupant !== sessionId) {
       sessionStorage.removeItem(playerStorageKey);
       setCurrentPlayer('');
@@ -223,52 +230,45 @@ function App() {
   };
 
   useEffect(() => {
-    const provider = new WebrtcProvider('shanghai-cardgame-room', docRef.current, {
-      signaling: [
-        'wss://signaling.yjs.dev',
-        'wss://y-webrtc-signaling-eu.herokuapp.com',
-        'wss://y-webrtc-signaling-us.herokuapp.com'
-      ]
-    });
-    providerRef.current = provider;
+    // Initialize Firebase
+    const app = initializeApp(firebaseConfig);
+    const database = getDatabase(app);
+    firebaseRef.current = ref(database, 'shanghai-game');
 
-    const observer = () => refresh();
-    deck.observe(observer);
-    discard.observe(observer);
-    table.observe(observer);
-    hands.observe(observer);
-    seats.observe(observer);
-    meta.observe(observer);
-
-    const initializeState = () => {
-      if (!meta.get('initialized')) {
-        initGameState();
+    // Listen for game state changes
+    const unsubscribe = onValue(firebaseRef.current, (snapshot) => {
+      const data = snapshot.val();
+      if (data) {
+        gameStateRef.current = data;
+        refresh();
       }
-      validateSelection();
-      refresh();
-    };
-
-    initializeState();
-
-    provider.on('status', ({ status }) => {
-      console.log('WebRTC status:', status);
-      setStatusMessage(status === 'connected' ? 'Connected' : 'Offline');
     });
 
-    provider.on('peers', ({ webrtcPeers }) => {
-      console.log('Connected peers:', webrtcPeers);
+    // Set up disconnect cleanup
+    const connectedRef = ref(database, '.info/connected');
+    onValue(connectedRef, (snap) => {
+      if (snap.val() === true) {
+        setStatusMessage('Connected');
+        // Remove our seat when we disconnect
+        onDisconnect(ref(database, `shanghai-game/seats/${currentPlayer}`)).set(null);
+      } else {
+        setStatusMessage('Offline');
+      }
     });
 
-    provider.on('synced', () => {
-      initGameState();
-      validateSelection();
-      refresh();
-    });
+    // Initialize game state if it doesn't exist
+    set(firebaseRef.current, gameStateRef.current);
+
+    // Validate current player selection
+    validateSelection();
 
     const cleanup = () => {
-      if (currentPlayer) removePlayerSeat(currentPlayer);
-      provider.destroy();
-      docRef.current.destroy();
+      if (currentPlayer) {
+        const newSeats = { ...gameStateRef.current.seats };
+        delete newSeats[currentPlayer];
+        update(firebaseRef.current, { seats: newSeats });
+      }
+      unsubscribe();
     };
 
     window.addEventListener('beforeunload', cleanup);
