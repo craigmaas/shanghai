@@ -8,6 +8,8 @@ A React-based browser multiplayer card game using two full 54-card decks. Player
 - Multiplayer sync using Yjs + WebRTC
 - Deck of 108 cards (two decks with jokers)
 - Three seats: June (left), Jan (top), Dorothy (right)
+
+<!-- Trigger build -->
 - Click or drag cards to draw and play
 - Recall / Shuffle and Deal buttons
 
