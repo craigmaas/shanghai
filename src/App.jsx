@@ -5,6 +5,7 @@ import { getDatabase, ref, onValue, set, update, onDisconnect, get } from 'fireb
 const playerNames = ['June', 'Jan', 'Dorothy'];
 const sessionIdKey = 'shanghai-session-id';
 const playerStorageKey = 'shanghai-player-name';
+const dismissedRoundKey = 'shanghai-dismissed-round-id';
 const CARD_BACK = 'https://deckofcardsapi.com/static/img/back.png';
 
 const firebaseConfig = {
@@ -228,7 +229,14 @@ function App() {
   const [currentPlayer, setCurrentPlayer] = useState(() => sessionStorage.getItem(playerStorageKey) ?? '');
   const [statusMessage, setStatusMessage] = useState('Connecting…');
   const [draggingId, setDraggingId] = useState(null);
-  const [dismissedRoundId, setDismissedRoundId] = useState(null);
+  const [dismissedRoundId, setDismissedRoundIdState] = useState(() => {
+    const stored = localStorage.getItem(dismissedRoundKey);
+    return stored ? Number(stored) : null;
+  });
+  const setDismissedRoundId = (id) => {
+    setDismissedRoundIdState(id);
+    if (id != null) localStorage.setItem(dismissedRoundKey, String(id));
+  };
   const [, setRenderCounter] = useState(0);
   const firebaseRef = useRef(null);
   const databaseRef = useRef(null);
