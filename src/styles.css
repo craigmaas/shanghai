@@ -33,7 +33,7 @@ img { user-select: none; -webkit-user-drag: none; }
 
 .felt {
   display: grid;
-  grid-template-rows: auto 1fr auto auto;
+  grid-template-rows: auto 1fr auto;
   height: 100vh;
   background:
     radial-gradient(ellipse at center, #128948 0%, #0d6e3a 55%, #0a4e29 100%);
@@ -58,7 +58,51 @@ img { user-select: none; -webkit-user-drag: none; }
   align-items: center;
   gap: 10px;
   font-weight: 700;
+  flex-wrap: wrap;
 }
+
+.me-inline,
+.seat-picker-inline {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 10px;
+  margin-left: 6px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.22);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  font-weight: 500;
+}
+.me-inline strong { color: var(--accent); }
+.me-inline .leave {
+  background: rgba(248, 113, 113, 0.18);
+  border: 1px solid rgba(248, 113, 113, 0.35);
+  color: #fee2e2;
+  padding: 3px 9px;
+  border-radius: 999px;
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+.me-inline .leave:hover { background: rgba(248, 113, 113, 0.28); }
+
+.seat-picker-inline .pick-label { color: var(--muted); font-size: 0.88rem; font-weight: 500; }
+.seat-picker-inline button {
+  background: rgba(250, 204, 21, 0.18);
+  border: 1px solid rgba(250, 204, 21, 0.4);
+  color: var(--text);
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-weight: 600;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+.seat-picker-inline button:hover { background: rgba(250, 204, 21, 0.3); }
+.seat-picker-inline button.occupied {
+  background: rgba(248, 113, 113, 0.15);
+  border-color: rgba(248, 113, 113, 0.35);
+  color: #fecaca;
+}
+.seat-picker-inline button.occupied:hover { background: rgba(248, 113, 113, 0.28); }
 
 .brand-name {
   font-size: 1.15rem;
@@ -129,24 +173,45 @@ img { user-select: none; -webkit-user-drag: none; }
 .centerpiece > * { pointer-events: auto; }
 
 /* ===== Player play zones (visual guides; do not gate drops) ===== */
+/* June and Dorothy occupy full-height side columns; Jan fills the wide   */
+/* middle below the deck/discard. The three areas are roughly equal in   */
+/* total play space.                                                      */
 .player-zones {
   position: absolute;
   left: 16px;
   right: 16px;
-  top: 240px;
+  top: 16px;
   bottom: 16px;
-  display: grid;
-  grid-template-columns: 1fr 1fr 1fr;
-  gap: 14px;
   pointer-events: none;
   z-index: 0;
 }
 
 .player-zone {
+  position: absolute;
   border: 2px dashed rgba(255, 255, 255, 0.22);
   border-radius: 18px;
-  position: relative;
   background: rgba(255, 255, 255, 0.02);
+}
+
+.player-zone-june {
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 26%;
+}
+
+.player-zone-dorothy {
+  right: 0;
+  top: 0;
+  bottom: 0;
+  width: 26%;
+}
+
+.player-zone-jan {
+  left: 28%;
+  right: 28%;
+  top: 224px;
+  bottom: 0;
 }
 
 .player-zone-label {
@@ -385,6 +450,10 @@ img { user-select: none; -webkit-user-drag: none; }
   margin: 0 auto;
   height: 160px;
 }
+.hand-fan.hand-fan-left {
+  margin-left: 0;
+  margin-right: auto;
+}
 
 .hand-card {
   border-radius: 6px;
@@ -417,19 +486,45 @@ img { user-select: none; -webkit-user-drag: none; }
   top: 10px;
   right: 14px;
   display: flex;
+  flex-direction: column;
   gap: 8px;
+  align-items: flex-end;
   z-index: 2;
 }
-.hand-controls button {
+.hand-sort-row,
+.hand-score-row {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+.hand-sort-row button,
+.hand-score-row button {
   background: rgba(255, 255, 255, 0.08);
   border: 1px solid rgba(255, 255, 255, 0.14);
   color: var(--text);
   padding: 6px 12px;
   border-radius: 999px;
   font-size: 0.82rem;
+  cursor: pointer;
 }
-.hand-controls button:hover:not(:disabled) { background: rgba(255, 255, 255, 0.16); }
-.hand-controls button:disabled { opacity: 0.4; cursor: not-allowed; }
+.hand-sort-row button:hover:not(:disabled),
+.hand-score-row button:hover { background: rgba(255, 255, 255, 0.16); }
+.hand-sort-row button:disabled { opacity: 0.4; cursor: not-allowed; }
+.score-input {
+  width: 62px;
+  text-align: center;
+  background: rgba(0, 0, 0, 0.35);
+  border: 1px solid rgba(250, 204, 21, 0.4);
+  color: var(--accent);
+  font-weight: 800;
+  font-size: 1.15rem;
+  border-radius: 8px;
+  padding: 4px 6px;
+  font-family: inherit;
+}
+.score-input::-webkit-outer-spin-button,
+.score-input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+.score-input { -moz-appearance: textfield; }
 
 /* ===== Score-pad modal ===== */
 .modal-overlay {

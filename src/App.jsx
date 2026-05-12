@@ -620,14 +620,21 @@ function App() {
     apply(next, { [`scores/${name}`]: nextScore });
   };
 
+  const setScoreTo = (name, value) => {
+    if (name !== currentPlayerRef.current) return;
+    const n = Math.max(0, Math.min(999, Math.floor(Number(value)) || 0));
+    const next = {
+      ...gameStateRef.current,
+      scores: { ...gameStateRef.current.scores, [name]: n }
+    };
+    apply(next, { [`scores/${name}`]: n });
+  };
+
   const recallAndShuffle = () => {
     if (!window.confirm('Recall every card to the deck and reshuffle? This affects all players.')) return;
-    const all = [];
-    all.push(...gameStateRef.current.deck);
-    all.push(...gameStateRef.current.discard);
-    Object.values(gameStateRef.current.table).forEach(({ x, y, faceUp, ...c }) => all.push(c));
-    playerNames.forEach((p) => all.push(...(gameStateRef.current.hands[p] || [])));
-    shuffle(all);
+    // Rebuild the deck from scratch so the count is always exactly 108 and
+    // any cards that drifted across state are guaranteed accounted for.
+    const all = shuffle(generateFullDeck());
     const next = {
       ...gameStateRef.current,
       deck: all,
@@ -693,15 +700,13 @@ function App() {
       const prev = gameStateRef.current.scores[name] || 0;
       const gained = hand.reduce((sum, c) => sum + pointsForCard(c), 0);
       const total = prev + gained;
-      results[name] = { prev, gained, total };
+      // Snapshot each player's hand so they can verify the tally while the
+      // round-complete modal is open (the live state has already been cleared).
+      results[name] = { prev, gained, total, hand: [...hand] };
       newScores[name] = total;
     }
-    const all = [];
-    all.push(...gameStateRef.current.deck);
-    all.push(...gameStateRef.current.discard);
-    Object.values(gameStateRef.current.table).forEach(({ x, y, faceUp, ...c }) => all.push(c));
-    playerNames.forEach((p) => all.push(...(gameStateRef.current.hands[p] || [])));
-    shuffle(all);
+    // Rebuild the deck from scratch so the count is always exactly 108.
+    const all = shuffle(generateFullDeck());
     const roundResult = { id: Date.now(), results };
     const next = {
       ...gameStateRef.current,
@@ -966,6 +971,9 @@ function App() {
   const handDragRef = useRef(null);
   const [handDrag, setHandDrag] = useState(null);
   const handFanRef = useRef(null);
+  const handStripRef = useRef(null);
+  const handControlsRef = useRef(null);
+  const [handLeftAligned, setHandLeftAligned] = useState(false);
 
   const startHandPointerDrag = (e, card, originalIndex) => {
     if (e.button !== 0) return; // left-click only
@@ -1094,9 +1102,38 @@ function App() {
     else if (payload.source === 'deck') flipDeckToDiscard();
   };
 
+  // Decide whether the hand fan needs to switch from center-aligned to
+  // left-aligned to avoid overlapping the sort/score controls in the top-right
+  // of the hand strip.
+  useEffect(() => {
+    const check = () => {
+      if (!handStripRef.current) return;
+      const stripW = handStripRef.current.clientWidth;
+      const controlsW = handControlsRef.current?.offsetWidth || 0;
+      const hand = currentPlayerRef.current ? gameStateRef.current.hands[currentPlayerRef.current] || [] : [];
+      const fanW = hand.length > 0 ? HAND_CARD_W + (hand.length - 1) * HAND_STEP : 0;
+      if (fanW === 0) { setHandLeftAligned(false); return; }
+      const centeredRight = (stripW + fanW) / 2;
+      const controlsLeft = stripW - controlsW - 14;
+      setHandLeftAligned(centeredRight + 8 > controlsLeft);
+    };
+    check();
+    let observer;
+    if (handStripRef.current && typeof ResizeObserver !== 'undefined') {
+      observer = new ResizeObserver(check);
+      observer.observe(handStripRef.current);
+    }
+    return () => { if (observer) observer.disconnect(); };
+  });
+
   const state = gameStateRef.current;
   const isSeated = Boolean(currentPlayer);
-  const myHand = currentPlayer ? state.hands[currentPlayer] || [] : [];
+  // While the round-complete modal is up, freeze the player's hand to the
+  // pre-tally snapshot so they can verify their score by eye.
+  const showingRound = !!(state.roundResult && state.roundResult.id && dismissedRoundId !== state.roundResult.id);
+  const myHand = (showingRound && currentPlayer && Array.isArray(state.roundResult?.results?.[currentPlayer]?.hand))
+    ? state.roundResult.results[currentPlayer].hand
+    : currentPlayer ? state.hands[currentPlayer] || [] : [];
   const deckCount = state.deck.length;
   const discardTop = state.discard[0] || null;
   const opponents = playerNames.filter((n) => n !== currentPlayer);
@@ -1115,12 +1152,11 @@ function App() {
   const FAN_OFFSET_Y = 0;
 
   const roundResult = state.roundResult;
-  const showRoundModal = !!(roundResult && roundResult.id && dismissedRoundId !== roundResult.id);
   const dismissRoundModal = () => { if (roundResult) setDismissedRoundId(roundResult.id); };
 
   return (
     <div className="felt">
-      {showRoundModal && (
+      {showingRound && (
         <div className="modal-overlay" onClick={dismissRoundModal}>
           <div className="modal-card" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
@@ -1159,6 +1195,27 @@ function App() {
           <span className="brand-name">Shanghai</span>
           <span className={`status-dot ${statusMessage === 'Connected' ? 'on' : 'off'}`} />
           <span className="status-text">{statusMessage}</span>
+          {isSeated ? (
+            <span className="me-inline">
+              <span>You are <strong>{currentPlayer}</strong></span>
+              <button type="button" className="leave" onClick={() => removePlayerSeat(currentPlayer)}>Leave</button>
+            </span>
+          ) : (
+            <span className="seat-picker-inline">
+              <span className="pick-label">Pick a seat:</span>
+              {seatStates.map(({ name, occupant }) => (
+                <button
+                  key={name}
+                  type="button"
+                  className={occupant ? 'occupied' : ''}
+                  onClick={() => setPlayerSeat(name)}
+                  title={occupant ? 'Sitting here will boot the current occupant' : ''}
+                >
+                  {name}{occupant ? ' (occupied)' : ''}
+                </button>
+              ))}
+            </span>
+          )}
         </div>
         <div className="opponents-row">
           {opponents.map((name) => {
@@ -1327,48 +1384,32 @@ function App() {
         })}
       </main>
 
-      <section className="self-strip">
-        {isSeated ? (
-          <>
-            <div className="me">
-              <div className="me-name">You are <strong>{currentPlayer}</strong></div>
-              <button type="button" className="leave" onClick={() => removePlayerSeat(currentPlayer)}>Leave seat</button>
-            </div>
-            <div className="score-control">
-              <button type="button" onClick={() => adjustScore(currentPlayer, -10)}>−10</button>
-              <button type="button" onClick={() => adjustScore(currentPlayer, -1)}>−1</button>
-              <div className="score-display">{state.scores[currentPlayer] || 0}</div>
-              <button type="button" onClick={() => adjustScore(currentPlayer, +1)}>+1</button>
-              <button type="button" onClick={() => adjustScore(currentPlayer, +10)}>+10</button>
-            </div>
-          </>
-        ) : (
-          <div className="seat-picker">
-            <span className="pick-label">Pick a seat:</span>
-            {seatStates.map(({ name, occupant }) => (
-              <button
-                key={name}
-                type="button"
-                className={occupant ? 'occupied' : ''}
-                onClick={() => setPlayerSeat(name)}
-                title={occupant ? `Sitting here will boot the current occupant` : ''}
-              >
-                {name}{occupant ? ' (occupied)' : ''}
-              </button>
-            ))}
-          </div>
-        )}
-      </section>
-
       <section
         className="hand-strip"
+        ref={handStripRef}
         onDragOver={(e) => e.preventDefault()}
         onDrop={onHandDrop}
       >
         {isSeated && (
-          <div className="hand-controls">
-            <button type="button" onClick={() => sortHand('suit')} disabled={myHand.length === 0}>Order by suit</button>
-            <button type="button" onClick={() => sortHand('rank')} disabled={myHand.length === 0}>Order by number</button>
+          <div className="hand-controls" ref={handControlsRef}>
+            <div className="hand-sort-row">
+              <button type="button" onClick={() => sortHand('suit')} disabled={myHand.length === 0}>Order by suit</button>
+              <button type="button" onClick={() => sortHand('rank')} disabled={myHand.length === 0}>Order by number</button>
+            </div>
+            <div className="hand-score-row">
+              <button type="button" onClick={() => adjustScore(currentPlayer, -1)} aria-label="Decrement score">−1</button>
+              <input
+                type="number"
+                min={0}
+                max={999}
+                className="score-input"
+                key={`score-${currentPlayer}-${state.scores[currentPlayer] || 0}`}
+                defaultValue={state.scores[currentPlayer] || 0}
+                onBlur={(e) => setScoreTo(currentPlayer, e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); }}
+              />
+              <button type="button" onClick={() => adjustScore(currentPlayer, +1)} aria-label="Increment score">+1</button>
+            </div>
           </div>
         )}
         {isSeated && myHand.length === 0 && (
@@ -1378,7 +1419,7 @@ function App() {
           <div className="hand-empty">Take a seat above to get a hand.</div>
         )}
         <div
-          className="hand-fan"
+          className={`hand-fan ${handLeftAligned ? 'hand-fan-left' : ''}`}
           ref={handFanRef}
           style={{ width: `${myHand.length > 0 ? HAND_CARD_W + (myHand.length - 1) * HAND_STEP : 0}px`, height: `${HAND_CARD_H}px` }}
         >
