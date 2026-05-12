@@ -235,6 +235,7 @@ function App() {
   const currentPlayerRef = useRef(currentPlayer);
   const gameStateRef = useRef(emptyState());
   const playAreaRef = useRef(null);
+  const deckDragImageRef = useRef(null);
   // Paths we've written locally but haven't yet seen a Firebase ack for. While
   // a path is pending, any remote echo gets overlaid with our local value so
   // optimistic updates don't get clobbered by an in-flight cross-client write.
@@ -357,6 +358,14 @@ function App() {
       hands: { ...gameStateRef.current.hands, [name]: newHand }
     };
     apply(next, { deck: rest, [`hands/${name}`]: newHand });
+  };
+
+  const flipDeckToDiscard = () => {
+    if (gameStateRef.current.deck.length === 0) return;
+    const [card, ...rest] = gameStateRef.current.deck;
+    const newDiscard = [card, ...gameStateRef.current.discard];
+    const next = { ...gameStateRef.current, deck: rest, discard: newDiscard };
+    apply(next, { deck: rest, discard: newDiscard });
   };
 
   const drawFromDiscard = (name) => {
@@ -629,7 +638,7 @@ function App() {
   };
 
   const dealCards = () => {
-    if (gameStateRef.current.deck.length < 33) {
+    if (gameStateRef.current.deck.length < 34) {
       window.alert('Not enough cards in the deck. Recall and shuffle first.');
       return;
     }
@@ -641,12 +650,14 @@ function App() {
         newHands[p].push(newDeck.shift());
       });
     }
+    // Flip the next card face up to start the discard pile.
+    const newDiscard = newDeck.length > 0 ? [newDeck.shift()] : [];
     const next = {
       ...gameStateRef.current,
       deck: newDeck,
       hands: newHands,
       table: {},
-      discard: []
+      discard: newDiscard
     };
     apply(next, {
       deck: newDeck,
@@ -654,7 +665,7 @@ function App() {
       'hands/Jan': newHands.Jan,
       'hands/Dorothy': newHands.Dorothy,
       table: null,
-      discard: []
+      discard: newDiscard
     });
   };
 
@@ -1072,6 +1083,7 @@ function App() {
     if (!payload) return;
     if (payload.source === 'hand') discardFromHand(payload.cardId);
     else if (payload.source === 'table') discardFromTable(payload.cardId);
+    else if (payload.source === 'deck') flipDeckToDiscard();
   };
 
   const state = gameStateRef.current;
@@ -1188,10 +1200,23 @@ function App() {
           <div
             className={`deck-stack ${deckCount === 0 ? 'empty' : ''}`}
             draggable={deckCount > 0 && isSeated}
-            onDragStart={(e) => setDragPayload(e, { source: 'deck' })}
+            onDragStart={(e) => {
+              if (deckDragImageRef.current) {
+                try { e.dataTransfer.setDragImage(deckDragImageRef.current, 50, 71); } catch {}
+              }
+              setDragPayload(e, { source: 'deck' });
+            }}
             onClick={() => isSeated && drawFromDeck(currentPlayer)}
             title="Drag or click to draw"
           >
+            <img
+              ref={deckDragImageRef}
+              src={CARD_BACK}
+              alt=""
+              aria-hidden="true"
+              draggable={false}
+              style={{ position: 'absolute', left: '-9999px', top: '-9999px', width: '100px', height: '143px', pointerEvents: 'none' }}
+            />
             <div className="stack-layers" data-count={Math.min(5, Math.ceil(deckCount / 22))}>
               <div className="stack-layer" />
               <div className="stack-layer" />
