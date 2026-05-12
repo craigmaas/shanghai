@@ -173,7 +173,7 @@ img { user-select: none; -webkit-user-drag: none; }
 .centerpiece > * { pointer-events: auto; }
 
 /* ===== Player play zones (visual guides; do not gate drops) ===== */
-/* June and Dorothy occupy full-height side columns; Jan fills the wide   */
+/* June and Dorothy occupy full-height side columns; Jann fills the wide  */
 /* middle below the deck/discard. The three areas are roughly equal in   */
 /* total play space.                                                      */
 .player-zones {
@@ -207,7 +207,7 @@ img { user-select: none; -webkit-user-drag: none; }
   width: 26%;
 }
 
-.player-zone-jan {
+.player-zone-jann {
   left: 28%;
   right: 28%;
   top: 224px;

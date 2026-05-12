@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { initializeApp } from 'firebase/app';
 import { getDatabase, ref, onValue, set, update, onDisconnect, get } from 'firebase/database';
 
-const playerNames = ['June', 'Jan', 'Dorothy'];
+const playerNames = ['June', 'Jann', 'Dorothy'];
 const sessionIdKey = 'shanghai-session-id';
 const playerStorageKey = 'shanghai-player-name';
 const dismissedRoundKey = 'shanghai-dismissed-round-id';
@@ -63,8 +63,8 @@ function emptyState() {
     deck: [],
     discard: [],
     table: {},
-    hands: { June: [], Jan: [], Dorothy: [] },
-    scores: { June: 0, Jan: 0, Dorothy: 0 },
+    hands: { June: [], Jann: [], Dorothy: [] },
+    scores: { June: 0, Jann: 0, Dorothy: 0 },
     seats: {},
     roundResult: null,
     meta: { initialized: false }
@@ -87,12 +87,12 @@ function normalizeState(data) {
     table,
     hands: {
       June: Array.isArray(data.hands?.June) ? data.hands.June : [],
-      Jan: Array.isArray(data.hands?.Jan) ? data.hands.Jan : [],
+      Jann: Array.isArray(data.hands?.Jann) ? data.hands.Jann : [],
       Dorothy: Array.isArray(data.hands?.Dorothy) ? data.hands.Dorothy : []
     },
     scores: {
       June: Number.isFinite(data.scores?.June) ? data.scores.June : 0,
-      Jan: Number.isFinite(data.scores?.Jan) ? data.scores.Jan : 0,
+      Jann: Number.isFinite(data.scores?.Jann) ? data.scores.Jann : 0,
       Dorothy: Number.isFinite(data.scores?.Dorothy) ? data.scores.Dorothy : 0
     },
     seats: data.seats || {},
@@ -211,8 +211,8 @@ function seededState() {
     deck: shuffle(generateFullDeck()),
     discard: [],
     table: {},
-    hands: { June: [], Jan: [], Dorothy: [] },
-    scores: { June: 0, Jan: 0, Dorothy: 0 },
+    hands: { June: [], Jann: [], Dorothy: [] },
+    scores: { June: 0, Jann: 0, Dorothy: 0 },
     seats: {},
     meta: { initialized: true }
   };
@@ -640,14 +640,14 @@ function App() {
       deck: all,
       discard: [],
       table: {},
-      hands: { June: [], Jan: [], Dorothy: [] }
+      hands: { June: [], Jann: [], Dorothy: [] }
     };
     apply(next, {
       deck: all,
       discard: [],
       table: null,
       'hands/June': [],
-      'hands/Jan': [],
+      'hands/Jann': [],
       'hands/Dorothy': []
     });
   };
@@ -658,7 +658,7 @@ function App() {
       return;
     }
     const newDeck = [...gameStateRef.current.deck];
-    const newHands = { June: [], Jan: [], Dorothy: [] };
+    const newHands = { June: [], Jann: [], Dorothy: [] };
     for (let round = 0; round < 11; round += 1) {
       playerNames.forEach((p) => {
         if (newDeck.length === 0) return;
@@ -677,7 +677,7 @@ function App() {
     apply(next, {
       deck: newDeck,
       'hands/June': newHands.June,
-      'hands/Jan': newHands.Jan,
+      'hands/Jann': newHands.Jann,
       'hands/Dorothy': newHands.Dorothy,
       table: null,
       discard: newDiscard
@@ -686,7 +686,7 @@ function App() {
 
   const resetScores = () => {
     if (!window.confirm('Reset all scores to 0?')) return;
-    const zeros = { June: 0, Jan: 0, Dorothy: 0 };
+    const zeros = { June: 0, Jann: 0, Dorothy: 0 };
     const next = { ...gameStateRef.current, scores: zeros };
     apply(next, { scores: zeros });
   };
@@ -713,7 +713,7 @@ function App() {
       deck: all,
       discard: [],
       table: {},
-      hands: { June: [], Jan: [], Dorothy: [] },
+      hands: { June: [], Jann: [], Dorothy: [] },
       scores: newScores,
       roundResult
     };
@@ -722,7 +722,7 @@ function App() {
       discard: [],
       table: null,
       'hands/June': [],
-      'hands/Jan': [],
+      'hands/Jann': [],
       'hands/Dorothy': [],
       scores: newScores,
       roundResult
