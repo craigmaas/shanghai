@@ -120,92 +120,6 @@ function pointsForCard(card) {
   return 5;
 }
 
-function tryLayoutRun(cards, useAHigh) {
-  const nonWild = cards.filter((c) => !isWild(c));
-  const wilds = cards.filter((c) => isWild(c));
-  if (nonWild.length === 0) return null;
-  const suit = nonWild[0].suit;
-  if (!nonWild.every((c) => c.suit === suit)) return null;
-  const rankMap = useAHigh ? RANK_HIGH : RANK_LOW;
-  const ranked = nonWild
-    .map((c) => ({ card: c, v: rankMap[c.rank] }))
-    .sort((a, b) => a.v - b.v);
-  for (let i = 1; i < ranked.length; i += 1) {
-    if (ranked[i].v === ranked[i - 1].v) return null; // duplicate rank ⇒ not a run
-  }
-  const minR = ranked[0].v;
-  const maxR = ranked[ranked.length - 1].v;
-  const gaps = (maxR - minR + 1) - nonWild.length;
-  if (gaps < 0 || gaps > wilds.length) return null;
-  const minBound = useAHigh ? 2 : 1;
-  const maxBound = useAHigh ? 14 : 13;
-
-  // Partition wilds by player-chosen anchor.
-  const lowAnchored = wilds.filter((w) => w.anchor === 'low');
-  const highAnchored = wilds.filter((w) => w.anchor === 'high');
-  const flex = wilds.filter((w) => w.anchor !== 'low' && w.anchor !== 'high');
-
-  // Fill internal gaps using flex wilds first; if not enough, borrow from
-  // anchored ones (high then low) so the run remains valid.
-  let gapsLeft = gaps;
-  let flexForGaps = Math.min(flex.length, gapsLeft);
-  gapsLeft -= flexForGaps;
-  let highForGaps = Math.min(highAnchored.length, gapsLeft);
-  gapsLeft -= highForGaps;
-  let lowForGaps = Math.min(lowAnchored.length, gapsLeft);
-  gapsLeft -= lowForGaps;
-  if (gapsLeft > 0) return null;
-
-  const extLow = lowAnchored.length - lowForGaps;
-  const extHigh = highAnchored.length - highForGaps;
-  const extFlex = flex.length - flexForGaps;
-
-  // Default: leftover flex wilds extend the high end. Redistribute on overflow.
-  let bottom = minR - extLow;
-  let top = maxR + extHigh + extFlex;
-  if (top > maxBound) {
-    const overflow = top - maxBound;
-    bottom -= overflow;
-    top = maxBound;
-  }
-  if (bottom < minBound) {
-    const overflow = minBound - bottom;
-    top += overflow;
-    bottom = minBound;
-    if (top > maxBound) return null;
-  }
-
-  const slots = new Array(top - bottom + 1).fill(null);
-  for (const { card, v } of ranked) slots[v - bottom] = card;
-
-  // Place anchored extensions at their ends.
-  const lowExtPool = lowAnchored.slice(lowForGaps);
-  for (let i = 0; i < extLow; i += 1) slots[i] = lowExtPool[i];
-  const highExtPool = highAnchored.slice(highForGaps);
-  for (let i = 0; i < extHigh; i += 1) slots[slots.length - 1 - i] = highExtPool[i];
-
-  // Fill the rest (gaps + flex extensions, plus anchored wilds borrowed for gaps).
-  const fillers = [
-    ...flex,
-    ...highAnchored.slice(0, highForGaps),
-    ...lowAnchored.slice(0, lowForGaps)
-  ];
-  for (let i = 0; i < slots.length; i += 1) {
-    if (slots[i] === null && fillers.length > 0) slots[i] = fillers.shift();
-  }
-  if (slots.some((s) => s === null) || fillers.length > 0) return null;
-  return slots; // lowest-to-highest, left-to-right
-}
-
-function reorderGroup(cards) {
-  if (cards.length <= 1) return cards;
-  const nonWild = cards.filter((c) => !isWild(c));
-  if (nonWild.length === 0) return cards;
-  const allSameRank = nonWild.every((c) => c.rank === nonWild[0].rank);
-  if (allSameRank) return cards; // set ⇒ leave order alone
-  return tryLayoutRun(cards, true) || cards; // A always high
-}
-
 function seededState() {
   return {
     deck: shuffle(generateFullDeck()),
@@ -391,155 +305,32 @@ function App() {
   const getNextZ = () =>
     Object.values(gameStateRef.current.table).reduce((m, c) => Math.max(m, c.z || 0), 0) + 1;
 
-  // Reorganize the cards currently belonging to `groupId` inside `tableState`,
-  // updating `groupIndex`, `z`, and `t` on each. Mutates `tableState` in place
-  // and returns the changed cards as an object so callers can also stage
-  // path-level writes for Firebase.
-  const reorganizeGroupInPlace = (tableState, groupId, baseZ, t, anchor) => {
-    const cards = Object.values(tableState).filter((c) => (c.groupId || c.id) === groupId);
-    if (cards.length === 0) return {};
-    const reordered = reorderGroup(cards);
-    const ax = anchor?.x ?? cards[0].x;
-    const ay = anchor?.y ?? cards[0].y;
-    const updated = {};
-    reordered.forEach((c, i) => {
-      const next = { ...c, groupId, groupIndex: i, z: baseZ + i, t, x: ax, y: ay };
-      tableState[c.id] = next;
-      updated[c.id] = next;
-    });
-    return updated;
-  };
-
-  // Place a card on the table. If `targetCard` is provided, the card joins
-  // that card's group and the whole group gets reorganized (runs → sorted
-  // high-to-low with wilds slotted into gaps; sets → preserved order).
-  // Otherwise the card lands at (dropX, dropY) as a singleton.
-  const placeOnTable = ({ card, from, targetCard, dropX, dropY }) => {
-    if (targetCard && targetCard.id === card.id) return;
-    const baseZ = getNextZ();
+  // Place a card on the table at (dropX, dropY). Cards are independent — no
+  // grouping or auto-sorting. The placed card gets a fresh top z and any
+  // legacy group fields are cleared.
+  const placeOnTable = ({ card, from, dropX, dropY }) => {
     const t = Date.now();
-    const working = { ...gameStateRef.current.table };
-    const oldGroupId = working[card.id]?.groupId || card.id;
-    if (from?.kind === 'table') delete working[card.id];
-
-    const paths = {};
-    let leftOldGroup = false;
-
-    if (targetCard) {
-      const newGroupId = targetCard.groupId || targetCard.id;
-      working[card.id] = {
-        ...card,
-        faceUp: true,
-        groupId: newGroupId,
-        x: targetCard.x,
-        y: targetCard.y,
-        t
-      };
-      const updated = reorganizeGroupInPlace(working, newGroupId, baseZ, t, { x: targetCard.x, y: targetCard.y });
-      Object.entries(updated).forEach(([id, c]) => { paths[`table/${id}`] = c; });
-      leftOldGroup = from?.kind === 'table' && oldGroupId !== newGroupId;
-    } else {
-      const placed = {
-        ...card,
-        x: dropX, y: dropY,
-        faceUp: true,
-        groupId: card.id, groupIndex: 0, z: baseZ, t,
-        anchor: null
-      };
-      working[card.id] = placed;
-      paths[`table/${card.id}`] = placed;
-      leftOldGroup = from?.kind === 'table' && oldGroupId !== card.id;
-    }
-
-    if (leftOldGroup) {
-      const updated = reorganizeGroupInPlace(working, oldGroupId, getNextZForTable(working), t);
-      Object.entries(updated).forEach(([id, c]) => { paths[`table/${id}`] = c; });
-    }
-
+    const placed = {
+      ...card,
+      x: dropX,
+      y: dropY,
+      faceUp: true,
+      z: getNextZ(),
+      t,
+      groupId: null,
+      groupIndex: null,
+      anchor: null
+    };
+    const working = { ...gameStateRef.current.table, [card.id]: placed };
     let localState = { ...gameStateRef.current, table: working };
+    const paths = { [`table/${card.id}`]: placed };
     if (from?.kind === 'hand') {
       const player = currentPlayerRef.current;
       if (!player) return;
       localState = { ...localState, hands: { ...gameStateRef.current.hands, [player]: from.hand } };
       paths[`hands/${player}`] = from.hand;
     }
-
     apply(localState, paths);
-  };
-
-  const getNextZForTable = (table) =>
-    Object.values(table).reduce((m, c) => Math.max(m, c.z || 0), 0) + 1;
-
-  const moveGroupTo = (groupId, newAnchorX, newAnchorY) => {
-    const groupCards = Object.values(gameStateRef.current.table)
-      .filter((c) => (c.groupId || c.id) === groupId);
-    if (groupCards.length === 0) return;
-    const t = Date.now();
-    const baseZ = getNextZ();
-    const reordered = [...groupCards].sort((a, b) => (a.groupIndex || 0) - (b.groupIndex || 0));
-    const newTable = { ...gameStateRef.current.table };
-    const paths = {};
-    reordered.forEach((c, i) => {
-      const updated = { ...c, x: newAnchorX, y: newAnchorY, z: baseZ + i, t };
-      newTable[c.id] = updated;
-      paths[`table/${c.id}`] = updated;
-    });
-    apply({ ...gameStateRef.current, table: newTable }, paths);
-  };
-
-  // Live (pointer-driven) drag for group handles. We update gameStateRef
-  // every pointermove so the cards visually follow the cursor, then commit
-  // a single Firebase write on release. Stamping `t` on each tick keeps the
-  // pending-overlay from clobbering us with stale remote echoes mid-drag.
-  const groupDragRef = useRef(null);
-  const [groupDragging, setGroupDragging] = useState(null);
-
-  useEffect(() => {
-    if (!groupDragging) return;
-    const onMove = (e) => {
-      const drag = groupDragRef.current;
-      if (!drag) return;
-      const nx = drag.startAnchorX + (e.clientX - drag.startClientX);
-      const ny = drag.startAnchorY + (e.clientY - drag.startClientY);
-      const t = Date.now();
-      const newTable = { ...gameStateRef.current.table };
-      for (const c of Object.values(newTable)) {
-        if ((c.groupId || c.id) === drag.groupId) {
-          newTable[c.id] = { ...c, x: nx, y: ny, t };
-        }
-      }
-      gameStateRef.current = { ...gameStateRef.current, table: newTable };
-      refresh();
-    };
-    const onUp = (e) => {
-      const drag = groupDragRef.current;
-      if (!drag) return;
-      const nx = drag.startAnchorX + (e.clientX - drag.startClientX);
-      const ny = drag.startAnchorY + (e.clientY - drag.startClientY);
-      moveGroupTo(drag.groupId, nx, ny);
-      groupDragRef.current = null;
-      setGroupDragging(null);
-    };
-    window.addEventListener('pointermove', onMove);
-    window.addEventListener('pointerup', onUp);
-    window.addEventListener('pointercancel', onUp);
-    return () => {
-      window.removeEventListener('pointermove', onMove);
-      window.removeEventListener('pointerup', onUp);
-      window.removeEventListener('pointercancel', onUp);
-    };
-  }, [groupDragging]);
-
-  const startGroupDrag = (e, groupId, anchorX, anchorY) => {
-    e.preventDefault();
-    groupDragRef.current = {
-      groupId,
-      startClientX: e.clientX,
-      startClientY: e.clientY,
-      startAnchorX: anchorX,
-      startAnchorY: anchorY
-    };
-    setGroupDragging(groupId);
   };
 
   const tableCardToHand = (cardId) => {
@@ -547,24 +338,14 @@ function App() {
     if (!player) return;
     const card = gameStateRef.current.table[cardId];
     if (!card) return;
-    const { x, y, faceUp, groupId, groupIndex, z, t, ...clean } = card;
+    const { x, y, faceUp, groupId, groupIndex, anchor, z, t, ...clean } = card;
     const working = { ...gameStateRef.current.table };
     delete working[cardId];
-    const oldGroupId = card.groupId || cardId;
-    const now = Date.now();
-    const groupUpdates = reorganizeGroupInPlace(working, oldGroupId, getNextZForTable(working), now);
     const newHand = [...(gameStateRef.current.hands[player] || []), clean];
-    const next = {
-      ...gameStateRef.current,
-      table: working,
-      hands: { ...gameStateRef.current.hands, [player]: newHand }
-    };
-    const paths = {
-      [`table/${cardId}`]: null,
-      [`hands/${player}`]: newHand
-    };
-    Object.entries(groupUpdates).forEach(([id, c]) => { paths[`table/${id}`] = c; });
-    apply(next, paths);
+    apply(
+      { ...gameStateRef.current, table: working, hands: { ...gameStateRef.current.hands, [player]: newHand } },
+      { [`table/${cardId}`]: null, [`hands/${player}`]: newHand }
+    );
   };
 
   const discardFromHand = (cardId) => {
@@ -589,24 +370,14 @@ function App() {
   const discardFromTable = (cardId) => {
     const card = gameStateRef.current.table[cardId];
     if (!card) return;
-    const { x, y, faceUp, groupId, groupIndex, z, t, ...clean } = card;
+    const { x, y, faceUp, groupId, groupIndex, anchor, z, t, ...clean } = card;
     const working = { ...gameStateRef.current.table };
     delete working[cardId];
-    const oldGroupId = card.groupId || cardId;
-    const now = Date.now();
-    const groupUpdates = reorganizeGroupInPlace(working, oldGroupId, getNextZForTable(working), now);
     const newDiscard = [clean, ...gameStateRef.current.discard];
-    const next = {
-      ...gameStateRef.current,
-      table: working,
-      discard: newDiscard
-    };
-    const paths = {
-      [`table/${cardId}`]: null,
-      discard: newDiscard
-    };
-    Object.entries(groupUpdates).forEach(([id, c]) => { paths[`table/${id}`] = c; });
-    apply(next, paths);
+    apply(
+      { ...gameStateRef.current, table: working, discard: newDiscard },
+      { [`table/${cardId}`]: null, discard: newDiscard }
+    );
   };
 
   const adjustScore = (name, delta) => {
@@ -840,13 +611,6 @@ function App() {
     const rect = playAreaRef.current?.getBoundingClientRect();
     if (!rect) return;
 
-    if (payload.source === 'group') {
-      const newAnchorX = (event.clientX - rect.left) - (payload.anchorDx || 0);
-      const newAnchorY = (event.clientY - rect.top) - (payload.anchorDy || 0);
-      moveGroupTo(payload.groupId, newAnchorX, newAnchorY);
-      return;
-    }
-
     const { x, y } = computeDropCenter(event, payload, rect);
 
     if (payload.source === 'hand') {
@@ -865,54 +629,6 @@ function App() {
       drawFromDeck(currentPlayer);
     } else if (payload.source === 'discard' && currentPlayer) {
       drawFromDiscard(currentPlayer);
-    }
-  };
-
-  const onCardDrop = (event, targetCard) => {
-    event.preventDefault();
-    event.stopPropagation();
-    setDraggingId(null);
-    const payload = readDragPayload(event);
-    if (!payload) return;
-    if (payload.cardId === targetCard.id) {
-      onTableDrop(event);
-      return;
-    }
-
-    if (payload.source === 'hand') {
-      const player = currentPlayerRef.current;
-      if (!player) return;
-      const hand = [...(gameStateRef.current.hands[player] || [])];
-      const idx = hand.findIndex((c) => c.id === payload.cardId);
-      if (idx < 0) return;
-      const [card] = hand.splice(idx, 1);
-      placeOnTable({ card, from: { kind: 'hand', hand }, targetCard });
-    } else if (payload.source === 'table') {
-      const card = gameStateRef.current.table[payload.cardId];
-      if (!card) return;
-
-      // If dragging a wild within its own group, the drop X position decides
-      // which end of the run the wild anchors to. Drop in the left half of the
-      // group → 'low'; right half → 'high'. We don't require landing on the
-      // leftmost card itself because it's mostly hidden under the next card.
-      let toPlace = card;
-      const srcGroupId = card.groupId || card.id;
-      const tgtGroupId = targetCard.groupId || targetCard.id;
-      if (isWild(card) && srcGroupId === tgtGroupId) {
-        const groupCards = Object.values(gameStateRef.current.table)
-          .filter((c) => (c.groupId || c.id) === tgtGroupId);
-        const rect = playAreaRef.current?.getBoundingClientRect();
-        if (rect && groupCards.length > 0) {
-          const anchorX = groupCards[0].x ?? 0;
-          const N = groupCards.length;
-          const midX = anchorX + ((N - 1) * FAN_OFFSET_X) / 2;
-          const dropX = event.clientX - rect.left;
-          toPlace = { ...card, anchor: dropX < midX ? 'low' : 'high' };
-        }
-      } else if (isWild(card) && srcGroupId !== tgtGroupId) {
-        toPlace = { ...card, anchor: null };
-      }
-      placeOnTable({ card: toPlace, from: { kind: 'table' }, targetCard });
     }
   };
 
@@ -1036,13 +752,10 @@ function App() {
       let action = null;
       for (const el of stack) {
         if (el.classList?.contains('discard-pile')) { action = { type: 'discard' }; break; }
-        if (el.classList?.contains('table-card') && el.dataset?.cardId) {
-          action = { type: 'joinGroup', cardId: el.dataset.cardId }; break;
-        }
         if (el.classList?.contains('hand-fan') || el.classList?.contains('hand-strip') || el.classList?.contains('hand-card')) {
           action = { type: 'reorder' }; break;
         }
-        if (el.classList?.contains('play-area')) {
+        if (el.classList?.contains('play-area') || el.classList?.contains('table-card')) {
           action = { type: 'placeOnTable' }; break;
         }
       }
@@ -1065,12 +778,6 @@ function App() {
           const dropY = e.clientY - rect.top - drag.offsetY + HAND_CARD_H / 2;
           const [card] = hand.splice(idx, 1);
           placeOnTable({ card, from: { kind: 'hand', hand }, dropX, dropY });
-        }
-      } else if (action?.type === 'joinGroup' && idx >= 0) {
-        const targetCard = gameStateRef.current.table[action.cardId];
-        if (targetCard) {
-          const [card] = hand.splice(idx, 1);
-          placeOnTable({ card, from: { kind: 'hand', hand }, targetCard });
         }
       } else if (action?.type === 'discard' && idx >= 0) {
         discardFromHand(drag.cardId);
@@ -1148,8 +855,6 @@ function App() {
 
   const cardWidth = 100;
   const cardHeight = Math.round(cardWidth / 0.7);
-  const FAN_OFFSET_X = 28;
-  const FAN_OFFSET_Y = 0;
 
   const roundResult = state.roundResult;
   const dismissRoundModal = () => { if (roundResult) setDismissedRoundId(roundResult.id); };
@@ -1314,49 +1019,9 @@ function App() {
           </div>
         </div>
 
-        {(() => {
-          // Compute per-group anchors + sizes so we can render a drag handle
-          // below each multi-card group.
-          const groups = {};
-          for (const c of tableCards) {
-            const gid = c.groupId || c.id;
-            if (!groups[gid]) groups[gid] = [];
-            groups[gid].push(c);
-          }
-          const handleW = 56;
-          const handleH = 18;
-          return Object.entries(groups).map(([gid, cards]) => {
-            if (cards.length < 2) return null;
-            const anchorX = cards[0].x ?? 0;
-            const anchorY = cards[0].y ?? 0;
-            const N = cards.length;
-            const handleCenterX = anchorX + ((N - 1) * FAN_OFFSET_X) / 2;
-            const handleCenterY = anchorY + cardHeight / 2 + 14;
-            const maxZ = cards.reduce((m, c) => Math.max(m, c.z || 0), 0);
-            return (
-              <div
-                key={`grp-handle-${gid}`}
-                className="group-handle"
-                style={{
-                  left: `${handleCenterX - handleW / 2}px`,
-                  top: `${handleCenterY - handleH / 2}px`,
-                  width: `${handleW}px`,
-                  height: `${handleH}px`,
-                  zIndex: maxZ + 1
-                }}
-                onPointerDown={(e) => startGroupDrag(e, gid, anchorX, anchorY)}
-                title="Drag to move the whole group"
-              >
-                <span aria-hidden="true">⋮⋮</span>
-              </div>
-            );
-          });
-        })()}
-
         {tableCards.map((card) => {
-          const groupIndex = card.groupIndex || 0;
-          const left = (card.x ?? 0) - cardWidth / 2 + groupIndex * FAN_OFFSET_X;
-          const top = (card.y ?? 0) - cardHeight / 2 + groupIndex * FAN_OFFSET_Y;
+          const left = (card.x ?? 0) - cardWidth / 2;
+          const top = (card.y ?? 0) - cardHeight / 2;
           const isBeingDragged = draggingId === card.id;
           return (
             <div
@@ -1373,10 +1038,8 @@ function App() {
               }}
               draggable
               onDragStart={(e) => setDragPayload(e, { source: 'table', cardId: card.id })}
-              onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); }}
-              onDrop={(e) => onCardDrop(e, card)}
               onDoubleClick={() => tableCardToHand(card.id)}
-              title="Drag to move · drop onto another card to fan · double-click to take"
+              title="Drag to move · double-click to take into hand"
             >
               <img src={getCardImageUrl(card)} alt={createCardLabel(card)} draggable={false} />
             </div>
